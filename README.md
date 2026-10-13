@@ -1,6 +1,6 @@
 # Maintainr
 
-A small, responsive car-care app for service schedules and repair/maintenance costs. Entries are stored in this browser with `localStorage`; no account or backend is required for this prototype.
+A small, responsive car-care app for service schedules and repair/maintenance costs. Entries are stored in browser with `localStorage`; no account or backend is required for this prototype.
 
 ## Run locally
 
