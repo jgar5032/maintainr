@@ -1,0 +1,10 @@
+{
+  "name": "Maintainr — Car Care",
+  "short_name": "Maintainr",
+  "description": "Keep every car service and cost in one place.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f2",
+  "theme_color": "#18392f",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
