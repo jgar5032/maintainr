@@ -37,7 +37,7 @@ test('empty garage persists as a real SQLite database with versioned relational 
   const { file, repo, data } = await setup();
   assert.equal(data.vehicles.length, 0);
   assert.equal(Buffer.from(file.saved.bytes.slice(0, 15)).toString(), 'SQLite format 3');
-  assert.equal(repo.db.exec('PRAGMA user_version')[0].values[0][0], 1);
+  assert.equal(repo.db.exec('PRAGMA user_version')[0].values[0][0], 2);
   assert.equal(repo.db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0].values.length, 4);
 });
 test('migration preserves legacy records, exact cents and ownership', async () => {
@@ -140,4 +140,54 @@ test('money parser rejects fractions of cents, negatives and unsafe large number
 test('existing SQLite garage is used without reading obsolete browser records', async () => {
   const { file } = await setup(normalized()); const repo = new GarageRepository(SQL, file);
   await repo.open(() => { throw Error('Do not read legacy storage'); }); assert.equal(repo.read().vehicles.length, 2);
+});
+test('mileage-only, date-only, and unscheduled services persist and restore', async () => {
+  let state = normalized();
+  for (const fields of [{ date: '', mileage: '18345' }, { date: '2027-01-01', mileage: '' }, { date: '', mileage: '' }]) {
+    state = domain.applyRecord(state, 'service', { ...values, ...fields }, null, id);
+  }
+  const { repo, file } = await setup(state);
+  const reopened = new GarageRepository(SQL, file); await reopened.open();
+  assert.deepEqual(reopened.read(), state);
+  assert.deepEqual(state.services.map(s => [s.date, s.mileage]), [[null, 18345], ['2027-01-01', null], [null, null]]);
+  const restored = domain.parseBackup(JSON.stringify(domain.createBackup(state)));
+  await repo.replace(restored); assert.deepEqual(repo.read(), state);
+  state = domain.applyRecord(state, 'service', { ...values, date: '', mileage: '' }, state.services[0].id, id);
+  assert.equal(state.services[0].mileage, null);
+});
+test('due in 6000 miles converts to an odometer threshold and rejects conflicting inputs', () => {
+  const state = domain.applyRecord(normalized(), 'service', { ...values, date: '', mileage: '', dueInMiles: '6000' }, null, id);
+  assert.equal(state.services[0].mileage, 18345);
+  assert.equal(state.services[0].date, null);
+  assert.equal(domain.serviceTiming(state.services[0], 12345).description, 'In 6,000 mi');
+  assert.throws(() => domain.applyRecord(normalized(), 'service', { ...values, dueInMiles: '6000' }, null, id), /not both/);
+  for (const dueInMiles of ['-1', '1.5', 'not a number']) assert.throws(() => domain.applyRecord(normalized(), 'service', { ...values, date: '', mileage: '', dueInMiles }, null, id));
+});
+test('missing thresholds never imply overdue or create invalid date displays', () => {
+  const service = { ...values, done: false, date: null, mileage: null };
+  assert.equal(domain.serviceTiming(service, 50000).label, 'Unscheduled');
+  assert.equal(domain.serviceTiming(service, 50000).due, false);
+  assert.equal(domain.serviceTiming({ ...service, mileage: 56000 }, 50000).description, 'In 6,000 mi');
+  assert.equal(domain.serviceTiming({ ...service, mileage: 56000 }, 56000).due, true);
+  assert.equal(domain.serviceTiming({ ...service, date: '2026-01-01' }, 50000, '2026-01-01').due, true);
+  assert.equal(domain.serviceTiming({ ...service, done: true, mileage: 0 }, 50000).due, false);
+  assert.doesNotThrow(() => [service, { ...service, date: '2027-01-01' }, { ...service, mileage: 56000 }].sort((a,b) => domain.compareServices(a,b,50000)));
+});
+test('v1 SQLite migration preserves existing services, linked expenses, and settings', async () => {
+  const { migrations } = await import('../src/schema.mjs');
+  const db = new SQL.Database(); db.run('PRAGMA foreign_keys=ON'); db.run(migrations[0].sql); db.run('PRAGMA user_version=1');
+  db.run("INSERT INTO vehicles VALUES ('v','Honda','Civic',2020,'Daily','',12345,NULL)");
+  db.run("INSERT INTO services VALUES ('s','v','Oil','Maintenance','2026-01-01',12000,'Synthetic',1,'2026-01-01',12345)");
+  db.run("INSERT INTO expenses VALUES ('e','v','s','Oil','Maintenance','2026-01-01',12345,7999,'Shop','Notes')");
+  db.run("INSERT INTO settings VALUES ('activeVehicleId','\"v\"')");
+  const file = new MemoryFile(); file.saved = { bytes: db.export(), revision: 1 }; db.close();
+  const repo = new GarageRepository(SQL, file); let state = await repo.open();
+  assert.equal(state.services[0].completedMileage, 12345); assert.equal(state.expenses[0].serviceId, 's'); assert.equal(state.expenses[0].amountCents, 7999); assert.equal(state.activeVehicleId, 'v');
+  state = domain.applyRecord(state, 'service', { ...values, date: '', mileage: '' }, null, id); await repo.replace(state);
+  const reopened = new GarageRepository(SQL, file); assert.deepEqual(await reopened.open(), state);
+  assert.deepEqual(reopened.db.exec('PRAGMA foreign_key_check'), []);
+});
+test('original JSON envelope and garage v3 remain importable', () => {
+  const old = { ...normalized(), version: 3, format: 'maintainr-backup', schemaVersion: 1, exportedAt: '2026-01-01T12:00:00Z' };
+  assert.equal(domain.parseBackup(JSON.stringify(old)).version, 4);
 });

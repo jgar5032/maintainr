@@ -60,9 +60,9 @@ Replacing all table rows and persisting the entire snapshot on each save favors 
 ```json
 {
   "format": "maintainr-backup",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "exportedAt": "2026-10-14T18:30:00.000Z",
-  "version": 3,
+  "version": 4,
   "vehicles": [],
   "services": [],
   "expenses": [],
@@ -72,7 +72,7 @@ Replacing all table rows and persisting the entire snapshot on each save favors 
 ```
 
 - `schemaVersion` versions the public backup contract.
-- `version` identifies the garage representation; v3 uses integer `amountCents`.
+- `version` identifies the garage representation; v3 introduced integer `amountCents`; v4 permits null service due dates and mileages. Backup format v2 carries this representation, while imports still accept format v1.
 - SQLite independently tracks its physical schema in `PRAGMA user_version`.
 
 Import parses a maximum 10 MiB file, checks the envelope, converts supported old garage versions, validates every record and relationship, and previews record counts and total expenses. Confirmation calls the same transactional repository replacement used for normal saves. CSV exports are spreadsheet reports only.
@@ -84,3 +84,5 @@ Legacy localStorage is read only when no SQLite snapshot exists. It remains inta
 The service worker precaches the complete release, including SQL engine JavaScript and WASM. Installation fails if any required asset cannot be fetched. A new release waits for existing clients to close, or for the user to accept reloading. User records are stored separately from cached app assets.
 
 The runtime makes no third-party requests. Browser-managed storage remains subject to user deletion and platform policies. Versioned file backups provide recovery and manual device transfer.
+
+SQLite migration 2 rebuilds services and linked expenses within one transaction to allow null due thresholds, preserving existing rows, links, settings, and indexes. Miles-from-now input is converted once to an absolute odometer threshold; future odometer updates do not move that target.

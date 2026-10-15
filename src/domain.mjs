@@ -1,8 +1,8 @@
 export const BACKUP_FORMAT = 'maintainr-backup';
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 export const MAX_BACKUP_BYTES = 10 * 1024 * 1024;
 export const localDate = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-export const emptyGarage = () => ({ version: 3, vehicles: [], services: [], expenses: [], activeVehicleId: null, lastExportAt: null });
+export const emptyGarage = () => ({ version: 4, vehicles: [], services: [], expenses: [], activeVehicleId: null, lastExportAt: null });
 const fail = message => { throw new Error(message); };
 function text(value, name, required = false) {
   if (value == null && !required) return '';
@@ -14,7 +14,7 @@ function integer(value, name, min = 0, max = 1_000_000_000) {
   return value;
 }
 function date(value, name, optional = false) {
-  if (!value && optional) return null;
+  if ((value == null || value === '') && optional) return null;
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value + 'T12:00:00Z').toISOString().slice(0, 10) !== value) fail(`Invalid ${name}.`);
   return value;
 }
@@ -26,9 +26,9 @@ export function moneyToCents(value) {
 }
 export function normalizeGarage(input) {
   if (!input || !['vehicles', 'services', 'expenses'].every(k => Array.isArray(input[k]))) fail('This file does not contain a garage.');
-  if (input.version != null && ![1, 2, 3].includes(input.version)) fail('This garage uses a newer, unsupported data version.');
+  if (input.version != null && ![1, 2, 3, 4].includes(input.version)) fail('This garage uses a newer, unsupported data version.');
   if (input.vehicles.length + input.services.length + input.expenses.length > 50000) fail('Too many records in this backup.');
-  const current = input.version === 3;
+  const current = input.version >= 3;
   const ids = new Set();
   const id = r => { if (!r || typeof r !== 'object') fail('Invalid record.'); const v = text(r.id, 'record ID', true); if (ids.has(v)) fail('Duplicate record IDs.'); ids.add(v); return v; };
   const vehicles = input.vehicles.map(v => ({ id: id(v), make: text(v.make, 'make', true), model: text(v.model, 'model', true), year: integer(v.year, 'model year', 1900, 2099), nickname: text(v.nickname, 'nickname') || `${v.make} ${v.model}`, plate: text(v.plate, 'license plate'), mileage: integer(v.mileage, 'mileage'), createdAt: date(v.createdAt, 'creation date', true) }));
@@ -38,7 +38,7 @@ export function normalizeGarage(input) {
     if (s.done != null && typeof s.done !== 'boolean') fail('Invalid completion status.');
     const completedDate = date(s.completedDate, 'completion date', true);
     if (completedDate && !s.done) fail('An upcoming service cannot have completion details.');
-    return { id: id(s), vehicleId: vehicleId(s), title: text(s.title, 'service title', true), category: text(s.category, 'category') || 'Maintenance', date: date(s.date, 'due date'), mileage: integer(s.mileage, 'due mileage'), notes: text(s.notes, 'notes'), done: !!s.done, completedDate, completedMileage: completedDate ? integer(s.completedMileage, 'completion mileage') : null };
+    return { id: id(s), vehicleId: vehicleId(s), title: text(s.title, 'service title', true), category: text(s.category, 'category') || 'Maintenance', date: date(s.date, 'due date', true), mileage: s.mileage == null || s.mileage === '' ? null : integer(s.mileage, 'due mileage'), notes: text(s.notes, 'notes'), done: !!s.done, completedDate, completedMileage: completedDate ? integer(s.completedMileage, 'completion mileage') : null };
   });
   const serviceMap = new Map(services.map(s => [s.id, s]));
   const linked = new Set();
@@ -54,7 +54,7 @@ export function normalizeGarage(input) {
   });
   const lastExportAt = input.lastExportAt || null;
   if (lastExportAt && (typeof lastExportAt !== 'string' || !Number.isFinite(Date.parse(lastExportAt)))) fail('Invalid export timestamp.');
-  return { version: 3, vehicles, services, expenses, activeVehicleId: vehicleIds.has(input.activeVehicleId) ? input.activeVehicleId : vehicles[0]?.id || null, lastExportAt };
+  return { version: 4, vehicles, services, expenses, activeVehicleId: vehicleIds.has(input.activeVehicleId) ? input.activeVehicleId : vehicles[0]?.id || null, lastExportAt };
 }
 export function createBackup(garage, now = new Date().toISOString()) {
   const normalized = normalizeGarage(garage);
@@ -66,7 +66,7 @@ export function parseBackup(raw) {
   try { value = JSON.parse(raw); } catch { fail('This is not a valid JSON file.'); }
   if (value?.format != null) {
     if (value.format !== BACKUP_FORMAT) fail('This is not a Maintainr backup.');
-    if (value.schemaVersion !== BACKUP_VERSION) fail('Unsupported backup format. Update Maintainr before importing this file.');
+    if (![1, BACKUP_VERSION].includes(value.schemaVersion)) fail('Unsupported backup format. Update Maintainr before importing this file.');
     if (typeof value.exportedAt !== 'string' || !Number.isFinite(Date.parse(value.exportedAt))) fail('Invalid backup export date.');
   } else if (!value || ![undefined, 1, 2].includes(value.version)) fail('Unrecognized backup format.');
   return normalizeGarage(value);
@@ -85,6 +85,16 @@ export function applyRecord(garage, type, values, editingId = null, idFactory = 
   } else {
     const record = { ...old, ...values, id, mileage: Number(values.mileage) };
     delete record.amount;
+    if (type === 'service') {
+      record.mileage = values.mileage == null || values.mileage === '' ? null : Number(values.mileage);
+      if (values.dueInMiles != null && values.dueInMiles !== '') {
+        if (record.mileage != null) fail('Enter either the due odometer or miles from now, not both.');
+        const car = next.vehicles.find(v => v.id === (old?.vehicleId || vehicleId));
+        if (!car) fail('Select a vehicle first.');
+        record.mileage = car.mileage + integer(Number(values.dueInMiles), 'miles from now');
+      }
+      record.date = values.date || null;
+    }
     if (type === 'vehicle') { record.year = Number(values.year); record.createdAt = old?.createdAt || localDate(); record.nickname ||= `${values.make} ${values.model}`; next.activeVehicleId = id; }
     else { record.vehicleId = old?.vehicleId || vehicleId; if (type === 'expense') record.amountCents = moneyToCents(values.amount); else record.done = old?.done || false; }
     if (old) Object.assign(old, record); else next[key].push(record);
@@ -98,4 +108,23 @@ export function deleteRecord(garage, type, id) {
   if (type === 'vehicle') { next.services = next.services.filter(r => r.vehicleId !== id); next.expenses = next.expenses.filter(r => r.vehicleId !== id); }
   if (type === 'service') next.expenses.forEach(e => { if (e.serviceId === id) e.serviceId = null; });
   return normalizeGarage(next);
+}
+
+export function serviceTiming(service, currentMileage, today = localDate()) {
+  const days = service.date ? Math.round((Date.parse(service.date + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000) : null;
+  const miles = service.mileage == null ? null : service.mileage - currentMileage;
+  const due = !service.done && ((days != null && days <= 0) || (miles != null && miles <= 0));
+  const soon = !service.done && days != null && days > 0 && days <= 7;
+  const label = service.done ? 'Completed' : due ? 'Due' : days == null && miles == null ? 'Unscheduled' : soon ? 'Due soon' : 'Scheduled';
+  const parts = [];
+  if (miles != null) parts.push(miles < 0 ? `${Math.abs(miles).toLocaleString()} mi overdue` : miles === 0 ? 'Mileage due' : `In ${miles.toLocaleString()} mi`);
+  if (days != null) parts.push(days < 0 ? `${Math.abs(days)} days overdue` : days === 0 ? 'Due today' : `In ${days} days`);
+  return { due, soon, label, description: parts.join(' · ') || 'No date or mileage set' };
+}
+export function compareServices(a, b, currentMileage) {
+  const priority = Number(serviceTiming(b, currentMileage).due) - Number(serviceTiming(a, currentMileage).due);
+  if (priority) return priority;
+  if (a.date && b.date) return a.date.localeCompare(b.date);
+  if (a.date || b.date) return a.date ? -1 : 1;
+  return (a.mileage ?? Infinity) - (b.mileage ?? Infinity) || a.title.localeCompare(b.title);
 }

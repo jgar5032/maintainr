@@ -1,6 +1,6 @@
-const CACHE = 'maintainr-v5-sqlite';
+const CACHE = 'maintainr-v6-optional-services';
 const APP_FILES = [
-  '/', '/index.html', '/styles.css?v=5', '/app.js?v=5',
+  '/', '/index.html', '/styles.css?v=6', '/app.js?v=6',
   '/src/pwa.mjs', '/src/domain.mjs', '/src/database.mjs', '/src/schema.mjs',
   '/vendor/sql.js/sql-wasm.js', '/vendor/sql.js/sql-wasm.wasm',
   '/manifest.webmanifest', '/icon.svg',

@@ -70,7 +70,7 @@ export class GarageRepository {
   }
   read(db = this.db) {
     const settings = Object.fromEntries(rows(db, 'SELECT key, value FROM settings').map(r => [r.key, JSON.parse(r.value)]));
-    return normalizeGarage({ version: 3,
+    return normalizeGarage({ version: 4,
       vehicles: rows(db, 'SELECT id, make, model, year, nickname, plate, mileage, created_at AS createdAt FROM vehicles ORDER BY rowid'),
       services: rows(db, 'SELECT id, vehicle_id AS vehicleId, title, category, due_date AS date, due_mileage AS mileage, notes, done, completed_date AS completedDate, completed_mileage AS completedMileage FROM services ORDER BY rowid').map(r => ({ ...r, done: !!r.done })),
       expenses: rows(db, 'SELECT id, vehicle_id AS vehicleId, service_id AS serviceId, title, category, date, mileage, amount_cents AS amountCents, shop, notes FROM expenses ORDER BY rowid'),

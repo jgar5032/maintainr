@@ -23,7 +23,7 @@ Each browser and origin (including port) has separate storage. Keep using the sa
 ## Use
 
 1. Add a vehicle with its current mileage. Additional vehicles have separate histories and totals.
-2. Schedule maintenance with a due date and mileage. Either threshold can make a service due.
+2. Schedule maintenance with an optional due date, optional odometer threshold, or miles from now (for example, 6000). Either threshold can make a service due; leaving both blank keeps the service unscheduled.
 3. Complete a service with its actual date and mileage. Optionally enter a cost to create a linked expense in the same transaction. Mileage advances when recording later work.
 4. Edit or delete vehicles, services, and expenses. Deleting a service keeps its expense as an independent record. Deleting a vehicle removes its records after confirmation.
 5. Open **Data & backups** to export the entire garage as JSON, restore an older backup, or export expenses as CSV for a spreadsheet.

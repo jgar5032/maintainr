@@ -214,3 +214,4 @@ button:disabled { opacity: .5; cursor: wait; }
 .update-notice { padding: 12px 20px; background: var(--lime-soft); display: flex; gap: 16px; align-items: center; justify-content: center; font-size: 13px; }
 @media (max-width: 820px) { .mobile-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); } .mobile-nav .nav-link { font-size: 8px; } }
 @media (max-width: 650px) { .backup-grid { grid-template-columns: 1fr; } .backup-panel { padding: 20px; } .garage-select { max-width: 100%; } .garage-select select { max-width: min(220px, 65vw); } }
+.schedule-date svg { width: 24px; height: 24px; }
