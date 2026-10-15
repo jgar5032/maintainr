@@ -9,14 +9,11 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Maintainr" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=5" />
     <title>Maintainr — your car, kept up</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app"><main class="startup"><h1>Opening your garage…</h1></main></div><noscript>Maintainr requires JavaScript to open your garage.</noscript>
     <dialog id="record-dialog" aria-labelledby="dialog-title">
       <form id="record-form" method="dialog">
         <div class="dialog-heading">
@@ -27,7 +24,8 @@
         <div class="form-actions"><button class="button button-quiet close-dialog" type="button">Cancel</button><button class="button button-primary" type="submit">Save record <span data-icon="arrow"></span></button></div>
       </form>
     </dialog>
-    <script src="/app.js" defer></script>
-    <script>if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));</script>
+    <script src="/vendor/sql.js/sql-wasm.js"></script>
+    <script type="module" src="/app.js?v=5"></script>
+    <script type="module" src="/src/pwa.mjs"></script>
   </body>
 </html>

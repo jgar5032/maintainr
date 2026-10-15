@@ -1,0 +1,13 @@
+{
+  "name": "maintainr",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline vehicle maintenance tracker with embedded SQLite and portable backups",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node tests/app.test.cjs",
+    "check": "node --check app.js && node --check sw.js && node --check src/domain.mjs && node --check src/database.mjs && node --check src/schema.mjs && node --check src/pwa.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
