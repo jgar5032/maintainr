@@ -70,9 +70,9 @@ export class GarageRepository {
   }
   read(db = this.db) {
     const settings = Object.fromEntries(rows(db, 'SELECT key, value FROM settings').map(r => [r.key, JSON.parse(r.value)]));
-    return normalizeGarage({ version: 4,
-      vehicles: rows(db, 'SELECT id, make, model, year, nickname, plate, mileage, created_at AS createdAt FROM vehicles ORDER BY rowid'),
-      services: rows(db, 'SELECT id, vehicle_id AS vehicleId, title, category, due_date AS date, due_mileage AS mileage, notes, done, completed_date AS completedDate, completed_mileage AS completedMileage FROM services ORDER BY rowid').map(r => ({ ...r, done: !!r.done })),
+    return normalizeGarage({ version: 6,
+      vehicles: rows(db, 'SELECT id, make, model, year, nickname, plate, mileage, created_at AS createdAt, photo FROM vehicles ORDER BY rowid'),
+      services: rows(db, 'SELECT id, vehicle_id AS vehicleId, title, category, due_date AS date, due_mileage AS mileage, notes, done, completed_date AS completedDate, completed_mileage AS completedMileage, recurrence_unit AS recurrenceUnit, recurrence_interval AS recurrenceInterval FROM services ORDER BY rowid').map(r => ({ ...r, done: !!r.done })),
       expenses: rows(db, 'SELECT id, vehicle_id AS vehicleId, service_id AS serviceId, title, category, date, mileage, amount_cents AS amountCents, shop, notes FROM expenses ORDER BY rowid'),
       ...settings,
     });
@@ -87,8 +87,8 @@ export class GarageRepository {
       migrate(candidate); candidate.run('BEGIN');
       candidate.run('DELETE FROM expenses; DELETE FROM services; DELETE FROM vehicles; DELETE FROM settings;');
       const insert = (sql, records, values) => { const statement = candidate.prepare(sql); try { for (const record of records) statement.run(values(record)); } finally { statement.free(); } };
-      insert('INSERT INTO vehicles VALUES (?,?,?,?,?,?,?,?)', state.vehicles, v => [v.id, v.make, v.model, v.year, v.nickname, v.plate, v.mileage, v.createdAt]);
-      insert('INSERT INTO services VALUES (?,?,?,?,?,?,?,?,?,?)', state.services, s => [s.id, s.vehicleId, s.title, s.category, s.date, s.mileage, s.notes, Number(s.done), s.completedDate, s.completedMileage]);
+      insert('INSERT INTO vehicles VALUES (?,?,?,?,?,?,?,?,?)', state.vehicles, v => [v.id, v.make, v.model, v.year, v.nickname, v.plate, v.mileage, v.createdAt, v.photo]);
+      insert('INSERT INTO services VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', state.services, s => [s.id, s.vehicleId, s.title, s.category, s.date, s.mileage, s.notes, Number(s.done), s.completedDate, s.completedMileage, s.recurrenceUnit, s.recurrenceInterval]);
       insert('INSERT INTO expenses VALUES (?,?,?,?,?,?,?,?,?,?)', state.expenses, e => [e.id, e.vehicleId, e.serviceId, e.title, e.category, e.date, e.mileage, e.amountCents, e.shop, e.notes]);
       for (const key of ['activeVehicleId', 'lastExportAt']) candidate.run('INSERT INTO settings VALUES (?,?)', [key, JSON.stringify(state[key])]);
       candidate.run('COMMIT');

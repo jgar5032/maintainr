@@ -37,7 +37,7 @@ test('empty garage persists as a real SQLite database with versioned relational 
   const { file, repo, data } = await setup();
   assert.equal(data.vehicles.length, 0);
   assert.equal(Buffer.from(file.saved.bytes.slice(0, 15)).toString(), 'SQLite format 3');
-  assert.equal(repo.db.exec('PRAGMA user_version')[0].values[0][0], 2);
+  assert.equal(repo.db.exec('PRAGMA user_version')[0].values[0][0], 4);
   assert.equal(repo.db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0].values.length, 4);
 });
 test('migration preserves legacy records, exact cents and ownership', async () => {
@@ -110,7 +110,7 @@ test('stale second window cannot overwrite a committed save', async () => {
 test('SQLite independently enforces relationships and amount constraints', () => {
   const db = new SQL.Database(); migrate(db);
   assert.throws(() => db.run("INSERT INTO expenses VALUES ('x','missing',NULL,'Repair','Repair','2026-01-01',1,100,'','')"), /FOREIGN KEY/);
-  db.run("INSERT INTO vehicles VALUES ('v','Honda','Civic',2020,'Car','',0,NULL)");
+  db.run("INSERT INTO vehicles VALUES ('v','Honda','Civic',2020,'Car','',0,NULL,NULL)");
   assert.throws(() => db.run("INSERT INTO expenses VALUES ('x','v',NULL,'Repair','Repair','2026-01-01',1,-100,'','')"), /CHECK/);
   assert.throws(() => db.run("INSERT INTO expenses VALUES ('x','v',NULL,'Repair','Repair','2026-01-01',1,100.5,'','')"), /INTEGER/);
   db.close();
@@ -189,5 +189,40 @@ test('v1 SQLite migration preserves existing services, linked expenses, and sett
 });
 test('original JSON envelope and garage v3 remain importable', () => {
   const old = { ...normalized(), version: 3, format: 'maintainr-backup', schemaVersion: 1, exportedAt: '2026-01-01T12:00:00Z' };
-  assert.equal(domain.parseBackup(JSON.stringify(old)).version, 4);
+  assert.equal(domain.parseBackup(JSON.stringify(old)).version, 6);
+});
+
+
+test('recurring services schedule from completion and survive backup and database reopen', async () => {
+  const { repo, file } = await setup(normalized());
+  let state = domain.applyRecord(repo.read(), 'service', { ...values, recurrenceUnit: 'miles', recurrenceInterval: '5000' }, null, id);
+  const original = state.services[0].id;
+  state = domain.applyRecord(state, 'complete', { date: '2026-01-31', mileage: '13000', amount: '40.00' }, original, id);
+  assert.equal(state.services.length, 2);
+  assert.equal(state.services[1].mileage, 18000);
+  assert.equal(state.services[1].date, null);
+  assert.equal(state.expenses[0].serviceId, original);
+  await repo.replace(state);
+  const reopened = new GarageRepository(SQL, file); await reopened.open();
+  assert.deepEqual(reopened.read(), state);
+  assert.deepEqual(domain.parseBackup(JSON.stringify(domain.createBackup(state))), state);
+  state = domain.applyRecord(normalized(), 'service', { ...values, recurrenceUnit: 'months', recurrenceInterval: '1' }, null, id);
+  state = domain.applyRecord(state, 'complete', { date: '2024-01-31', mileage: '13000' }, state.services[0].id, id);
+  assert.equal(state.services[1].date, '2024-02-29');
+  assert.equal(state.services[1].mileage, null);
+  assert.throws(() => domain.applyRecord(normalized(), 'service', { ...values, recurrenceUnit: 'months', recurrenceInterval: '0' }, null, id), /interval/);
+});
+
+
+test('vehicle photos persist, survive backups, and can be removed', async () => {
+  const { repo, file } = await setup(normalized());
+  const photo = 'data:image/jpeg;base64,/9j/2Q==';
+  let state = domain.applyRecord(repo.read(), 'vehicle', { ...repo.read().vehicles[0], photo }, 'one');
+  await repo.replace(state);
+  const reopened = new GarageRepository(SQL, file); await reopened.open();
+  assert.equal(reopened.read().vehicles[0].photo, photo);
+  assert.equal(domain.parseBackup(JSON.stringify(domain.createBackup(state))).vehicles[0].photo, photo);
+  state = domain.applyRecord(state, 'vehicle', { ...state.vehicles[0], photo: null }, 'one');
+  assert.equal(state.vehicles[0].photo, null);
+  assert.throws(() => domain.normalizeGarage({ ...state, vehicles: [{ ...state.vehicles[0], photo: 'data:image/svg+xml;base64,AAAA' }] }), /photo/);
 });

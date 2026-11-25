@@ -22,11 +22,13 @@ Each browser and origin (including port) has separate storage. Keep using the sa
 
 ## Use
 
-1. Add a vehicle with its current mileage. Additional vehicles have separate histories and totals.
-2. Schedule maintenance with an optional due date, optional odometer threshold, or miles from now (for example, 6000). Either threshold can make a service due; leaving both blank keeps the service unscheduled.
-3. Complete a service with its actual date and mileage. Optionally enter a cost to create a linked expense in the same transaction. Mileage advances when recording later work.
-4. Edit or delete vehicles, services, and expenses. Deleting a service keeps its expense as an independent record. Deleting a vehicle removes its records after confirmation.
-5. Open **Data & backups** to export the entire garage as JSON, restore an older backup, or export expenses as CSV for a spreadsheet.
+1. Add a vehicle with its current mileage and an optional photo. Edit the vehicle to replace or remove its photo; images are resized and stored locally. Additional vehicles have separate histories and totals.
+2. Use **Update mileage** on the vehicle card to quickly enter or correct an odometer reading. Mileage-based service statuses update immediately.
+3. Choose an optional template when adding a service to fill its name and category. Set the schedule and repeat interval according to your vehicle’s manual. Schedule maintenance with an optional due date, optional odometer threshold, or miles from now (for example, 6000). Either threshold can make a service due; leaving both blank keeps the service unscheduled.
+4. To track recurring oil changes, add a service and choose a repeat interval in miles or months. Set the first due date or mileage, then complete it with the actual date and mileage to automatically schedule the next one. Month intervals use the last day of the target month when needed. Deleting the upcoming occurrence stops the series.
+5. Complete a service with its actual date and mileage. Optionally enter a cost to create a linked expense in the same transaction. Mileage advances when recording later work.
+6. Edit or delete vehicles, services, and expenses. Deleting a service keeps its expense as an independent record. Deleting a vehicle removes its records after confirmation.
+7. Open **Data & backups** to export the entire garage as JSON, restore an older backup, or export expenses as CSV for a spreadsheet.
 
 Fresh installations contain no example data. Existing browser records migrate automatically into SQLite once; the original `maintainr-data` entry remains untouched for recovery. Original demo records can be removed using their banner.
 
@@ -34,7 +36,7 @@ Fresh installations contain no example data. Existing browser records migrate au
 
 **Export garage** downloads a versioned `maintainr-backup-YYYY-MM-DD.json` file. Save it somewhere available from your next device. On the new device, open Maintainr, choose **Data & backups → Choose JSON backup**, review the counts and total, then confirm replacement.
 
-- JSON includes every vehicle, service, expense, note, completion record, and selected vehicle.
+- JSON includes every vehicle, vehicle photo, service, expense, note, completion record, and selected vehicle.
 - Earlier unversioned and v2 Maintainr JSON exports are converted during import.
 - Future/unknown versions, duplicate IDs, invalid dates, malformed amounts, oversized files, and broken relationships are rejected before any records change.
 - Restoration replaces the garage atomically. It does not merge or sync.
@@ -67,7 +69,7 @@ Service worker → app files only
 
 SQLite is real, embedded SQL via **sql.js 1.15.0**. Tables are `vehicles`, `services`, `expenses`, and `settings`. Foreign keys enforce ownership and service links. Expenses use integer cents. Prepared statements bind all user data. SQL schema versions (`PRAGMA user_version`), the garage data version, and the public JSON backup version are separate.
 
-For broad browser compatibility, the SQLite engine operates in memory and the app commits its binary database snapshot into one IndexedDB record. IndexedDB is the browser's file persistence mechanism here; it does not hold separate application tables, and Dexie is not used. Both the SQLite transaction and durable browser transaction must finish before the UI reports success. A revision comparison inside the IndexedDB transaction prevents a stale window from overwriting a newer save. This snapshot approach suits a small text-record garage, not very large databases or attachments.
+For broad browser compatibility, the SQLite engine operates in memory and the app commits its binary database snapshot into one IndexedDB record. IndexedDB is the browser's file persistence mechanism here; it does not hold separate application tables, and Dexie is not used. Both the SQLite transaction and durable browser transaction must finish before the UI reports success. A revision comparison inside the IndexedDB transaction prevents a stale window from overwriting a newer save. Vehicle photos are resized and compressed before storage; this snapshot approach suits a small garage rather than large collections of attachments.
 
 Browser storage can still be removed by clearing site data, private browsing, device loss, or storage eviction. **Keep exported backups.** The storage persistence request in Data & backups is optional and browser-controlled. SQLite is not a backup service or encryption layer.
 

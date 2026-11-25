@@ -48,6 +48,11 @@ ALTER TABLE expenses_optional RENAME TO expenses;
 CREATE INDEX services_vehicle_due ON services(vehicle_id, done, due_date);
 CREATE INDEX expenses_vehicle_date ON expenses(vehicle_id, date);
 CREATE INDEX expenses_category ON expenses(vehicle_id, category);
+` }, { version: 3, sql: `
+ALTER TABLE services ADD COLUMN recurrence_unit TEXT;
+ALTER TABLE services ADD COLUMN recurrence_interval INTEGER;
+` }, { version: 4, sql: `
+ALTER TABLE vehicles ADD COLUMN photo TEXT;
 ` }];
 export function migrate(db) {
   db.run('PRAGMA foreign_keys = ON');

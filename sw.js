@@ -1,6 +1,6 @@
-const CACHE = 'maintainr-v6-optional-services';
+const CACHE = 'maintainr-v11-service-templates';
 const APP_FILES = [
-  '/', '/index.html', '/styles.css?v=6', '/app.js?v=6',
+  '/', '/index.html', '/styles.css?v=11', '/app.js?v=11',
   '/src/pwa.mjs', '/src/domain.mjs', '/src/database.mjs', '/src/schema.mjs',
   '/vendor/sql.js/sql-wasm.js', '/vendor/sql.js/sql-wasm.wasm',
   '/manifest.webmanifest', '/icon.svg',

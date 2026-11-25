@@ -60,9 +60,9 @@ Replacing all table rows and persisting the entire snapshot on each save favors 
 ```json
 {
   "format": "maintainr-backup",
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "exportedAt": "2026-10-14T18:30:00.000Z",
-  "version": 4,
+  "version": 6,
   "vehicles": [],
   "services": [],
   "expenses": [],
@@ -72,7 +72,7 @@ Replacing all table rows and persisting the entire snapshot on each save favors 
 ```
 
 - `schemaVersion` versions the public backup contract.
-- `version` identifies the garage representation; v3 introduced integer `amountCents`; v4 permits null service due dates and mileages. Backup format v2 carries this representation, while imports still accept format v1.
+- `version` identifies the garage representation; v3 introduced integer `amountCents`; v4 permits null service due dates and mileages. v5 adds optional recurrence units and intervals. v6 adds optional compressed vehicle photos. Backup format v4 carries this representation, while imports still accept formats v1 through v3.
 - SQLite independently tracks its physical schema in `PRAGMA user_version`.
 
 Import parses a maximum 10 MiB file, checks the envelope, converts supported old garage versions, validates every record and relationship, and previews record counts and total expenses. Confirmation calls the same transactional repository replacement used for normal saves. CSV exports are spreadsheet reports only.
@@ -86,3 +86,7 @@ The service worker precaches the complete release, including SQL engine JavaScri
 The runtime makes no third-party requests. Browser-managed storage remains subject to user deletion and platform policies. Versioned file backups provide recovery and manual device transfer.
 
 SQLite migration 2 rebuilds services and linked expenses within one transaction to allow null due thresholds, preserving existing rows, links, settings, and indexes. Miles-from-now input is converted once to an absolute odometer threshold; future odometer updates do not move that target.
+
+Recurring services create one new upcoming occurrence when completed, in the same transaction as completion and any expense. The next threshold is based on actual completion mileage or date; month-end dates clamp to the last day of the target month. Deleting the upcoming occurrence ends that series.
+
+Vehicle photos are resized and encoded as JPEG locally, stored with the vehicle, and included in JSON backups. Uploaded files are limited to 10 MiB and stored photos to 400,000 characters; saving a vehicle is rejected if its backup would exceed the 10 MiB import limit.

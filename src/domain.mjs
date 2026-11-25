@@ -1,8 +1,8 @@
 export const BACKUP_FORMAT = 'maintainr-backup';
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 4;
 export const MAX_BACKUP_BYTES = 10 * 1024 * 1024;
 export const localDate = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-export const emptyGarage = () => ({ version: 4, vehicles: [], services: [], expenses: [], activeVehicleId: null, lastExportAt: null });
+export const emptyGarage = () => ({ version: 6, vehicles: [], services: [], expenses: [], activeVehicleId: null, lastExportAt: null });
 const fail = message => { throw new Error(message); };
 function text(value, name, required = false) {
   if (value == null && !required) return '';
@@ -24,21 +24,30 @@ export function moneyToCents(value) {
   const [whole, fraction = ''] = input.split('.');
   return integer(Number(whole) * 100 + Number(fraction.padEnd(2, '0')), 'amount', 1);
 }
+function photo(value) {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string' || value.length > 400000 || !/^data:image\/jpeg;base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) fail('Invalid vehicle photo.');
+  return value;
+}
 export function normalizeGarage(input) {
   if (!input || !['vehicles', 'services', 'expenses'].every(k => Array.isArray(input[k]))) fail('This file does not contain a garage.');
-  if (input.version != null && ![1, 2, 3, 4].includes(input.version)) fail('This garage uses a newer, unsupported data version.');
+  if (input.version != null && ![1, 2, 3, 4, 5, 6].includes(input.version)) fail('This garage uses a newer, unsupported data version.');
   if (input.vehicles.length + input.services.length + input.expenses.length > 50000) fail('Too many records in this backup.');
   const current = input.version >= 3;
   const ids = new Set();
   const id = r => { if (!r || typeof r !== 'object') fail('Invalid record.'); const v = text(r.id, 'record ID', true); if (ids.has(v)) fail('Duplicate record IDs.'); ids.add(v); return v; };
-  const vehicles = input.vehicles.map(v => ({ id: id(v), make: text(v.make, 'make', true), model: text(v.model, 'model', true), year: integer(v.year, 'model year', 1900, 2099), nickname: text(v.nickname, 'nickname') || `${v.make} ${v.model}`, plate: text(v.plate, 'license plate'), mileage: integer(v.mileage, 'mileage'), createdAt: date(v.createdAt, 'creation date', true) }));
+  const vehicles = input.vehicles.map(v => ({ id: id(v), make: text(v.make, 'make', true), model: text(v.model, 'model', true), year: integer(v.year, 'model year', 1900, 2099), nickname: text(v.nickname, 'nickname') || `${v.make} ${v.model}`, plate: text(v.plate, 'license plate'), mileage: integer(v.mileage, 'mileage'), createdAt: date(v.createdAt, 'creation date', true), photo: photo(v.photo) }));
   const vehicleIds = new Set(vehicles.map(v => v.id));
   const vehicleId = r => { const v = r.vehicleId || (!current && input.version !== 2 ? vehicles[0]?.id : null); if (!vehicleIds.has(v)) fail('A record refers to a missing vehicle.'); return v; };
   const services = input.services.map(s => {
     if (s.done != null && typeof s.done !== 'boolean') fail('Invalid completion status.');
     const completedDate = date(s.completedDate, 'completion date', true);
     if (completedDate && !s.done) fail('An upcoming service cannot have completion details.');
-    return { id: id(s), vehicleId: vehicleId(s), title: text(s.title, 'service title', true), category: text(s.category, 'category') || 'Maintenance', date: date(s.date, 'due date', true), mileage: s.mileage == null || s.mileage === '' ? null : integer(s.mileage, 'due mileage'), notes: text(s.notes, 'notes'), done: !!s.done, completedDate, completedMileage: completedDate ? integer(s.completedMileage, 'completion mileage') : null };
+    const recurrenceUnit = s.recurrenceUnit || null;
+    if (recurrenceUnit && !['miles', 'months'].includes(recurrenceUnit)) fail('Invalid repeat unit.');
+    const recurrenceInterval = recurrenceUnit ? integer(s.recurrenceInterval, 'repeat interval', 1, recurrenceUnit === 'months' ? 1200 : 1_000_000_000) : null;
+    if (!recurrenceUnit && s.recurrenceInterval != null && s.recurrenceInterval !== '') fail('Choose a repeat unit.');
+    return { recurrenceUnit, recurrenceInterval, id: id(s), vehicleId: vehicleId(s), title: text(s.title, 'service title', true), category: text(s.category, 'category') || 'Maintenance', date: date(s.date, 'due date', true), mileage: s.mileage == null || s.mileage === '' ? null : integer(s.mileage, 'due mileage'), notes: text(s.notes, 'notes'), done: !!s.done, completedDate, completedMileage: completedDate ? integer(s.completedMileage, 'completion mileage') : null };
   });
   const serviceMap = new Map(services.map(s => [s.id, s]));
   const linked = new Set();
@@ -54,7 +63,7 @@ export function normalizeGarage(input) {
   });
   const lastExportAt = input.lastExportAt || null;
   if (lastExportAt && (typeof lastExportAt !== 'string' || !Number.isFinite(Date.parse(lastExportAt)))) fail('Invalid export timestamp.');
-  return { version: 4, vehicles, services, expenses, activeVehicleId: vehicleIds.has(input.activeVehicleId) ? input.activeVehicleId : vehicles[0]?.id || null, lastExportAt };
+  return { version: 6, vehicles, services, expenses, activeVehicleId: vehicleIds.has(input.activeVehicleId) ? input.activeVehicleId : vehicles[0]?.id || null, lastExportAt };
 }
 export function createBackup(garage, now = new Date().toISOString()) {
   const normalized = normalizeGarage(garage);
@@ -66,7 +75,7 @@ export function parseBackup(raw) {
   try { value = JSON.parse(raw); } catch { fail('This is not a valid JSON file.'); }
   if (value?.format != null) {
     if (value.format !== BACKUP_FORMAT) fail('This is not a Maintainr backup.');
-    if (![1, BACKUP_VERSION].includes(value.schemaVersion)) fail('Unsupported backup format. Update Maintainr before importing this file.');
+    if (![1, 2, 3, BACKUP_VERSION].includes(value.schemaVersion)) fail('Unsupported backup format. Update Maintainr before importing this file.');
     if (typeof value.exportedAt !== 'string' || !Number.isFinite(Date.parse(value.exportedAt))) fail('Invalid backup export date.');
   } else if (!value || ![undefined, 1, 2].includes(value.version)) fail('Unrecognized backup format.');
   return normalizeGarage(value);
@@ -81,6 +90,19 @@ export function applyRecord(garage, type, values, editingId = null, idFactory = 
     if (old.done) fail('This service is already complete.');
     if (values.date > localDate()) fail('Completion date cannot be in the future.');
     Object.assign(old, { done: true, completedDate: values.date, completedMileage: Number(values.mileage) });
+    if (old.recurrenceUnit) {
+      let nextDate = null, nextMileage = null;
+      if (old.recurrenceUnit === 'miles') nextMileage = integer(Number(values.mileage) + old.recurrenceInterval, 'next due mileage');
+      else {
+        const [year, month, day] = values.date.split('-').map(Number);
+        const target = new Date(Date.UTC(year, month - 1 + old.recurrenceInterval, 1));
+        const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+        target.setUTCDate(Math.min(day, lastDay));
+        nextDate = target.toISOString().slice(0, 10);
+        date(nextDate, 'next due date');
+      }
+      next.services.push({ ...old, id: idFactory(), date: nextDate, mileage: nextMileage, done: false, completedDate: null, completedMileage: null });
+    }
     if (values.amount) next.expenses.push({ id: idFactory(), vehicleId: old.vehicleId, serviceId: id, title: old.title, category: old.category === 'Repair' ? 'Repair' : 'Maintenance', date: values.date, mileage: Number(values.mileage), amountCents: moneyToCents(values.amount), shop: values.shop || '', notes: old.notes });
   } else {
     const record = { ...old, ...values, id, mileage: Number(values.mileage) };
@@ -94,6 +116,8 @@ export function applyRecord(garage, type, values, editingId = null, idFactory = 
         record.mileage = car.mileage + integer(Number(values.dueInMiles), 'miles from now');
       }
       record.date = values.date || null;
+      record.recurrenceUnit = values.recurrenceUnit || null;
+      record.recurrenceInterval = record.recurrenceUnit ? Number(values.recurrenceInterval) : (values.recurrenceInterval ? Number(values.recurrenceInterval) : null);
     }
     if (type === 'vehicle') { record.year = Number(values.year); record.createdAt = old?.createdAt || localDate(); record.nickname ||= `${values.make} ${values.model}`; next.activeVehicleId = id; }
     else { record.vehicleId = old?.vehicleId || vehicleId; if (type === 'expense') record.amountCents = moneyToCents(values.amount); else record.done = old?.done || false; }
